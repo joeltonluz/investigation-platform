@@ -349,7 +349,13 @@ aplicação passaria a validar tokens reais.
   chave é o par RSA local. Em `keycloak`, a aplicação busca o JWKS do realm, seleciona a chave
   pelo `kid` do token e valida a assinatura RS256; o JWKS é cacheado em memória e reobtido
   quando aparece um `kid` desconhecido (rotação de chave). Além da assinatura, valida-se o
-  `iss` (emissor) e a expiração.
+  `iss` (emissor) e a expiração. A verificação de **audience (`aud`) é desativada**
+  deliberadamente: o Keycloak, por padrão, emite `aud=account` para um client confidential, e
+  neste desenho a autorização vem das *client roles* (`resource_access`) e do `iss` validado —
+  a audience não representa o público-alvo real. Validar `aud=account` só recusaria tokens
+  legítimos sem ganho de segurança. Caso a audience precisasse ser validada, o caminho seria
+  configurar um *audience mapper* no Keycloak para emitir o `aud` correto por client, e então
+  reativar a verificação.
 
 **Consequências.**
 - Concretiza o ADR-007: o código de extração de claims e autorização é o mesmo nos dois modos;
@@ -358,7 +364,7 @@ aplicação passaria a validar tokens reais.
 - A suíte de testes continua rodando em modo `mock`, sem depender do Keycloak no ar — rápida e
   isolada.
 - Validar `iss` e expiração, além da assinatura, fecha uma lacuna de segurança: uma assinatura
-  válida de outro emissor não é aceita.
+  válida de outro emissor não é aceita. A autorização em si continua ancorada nas roles.
 - Custo assumido: `start-dev` e H2 não são apropriados para produção. Em produção, o Keycloak
   usaria um banco dedicado (ex.: Postgres próprio) e o modo `start`, com credenciais de admin
   vindas de secrets, não do compose. A escolha atual é deliberada para o escopo da prova.
