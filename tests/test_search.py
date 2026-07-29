@@ -130,7 +130,7 @@ class TestSearchEndpoint:
         assert len(data["results"]) == 1
         assert data["results"][0]["name"] == "ACME Corp"
 
-    async def test_user_with_both_permissions_gets_aggregated_results(
+    async def test_user_with_both_permissions_searches_only_origin_app(
         self,
         app,
         session,
@@ -156,6 +156,41 @@ class TestSearchEndpoint:
         ) as client:
             resp = await client.get(
                 "/api/v1/search?q=report",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["app"] == "analytics"
+        assert len(data["results"]) == 1
+        assert data["results"][0]["title"] == "Q3 Report"
+
+    async def test_aggregated_mode_returns_combined_results(
+        self,
+        app,
+        session,
+        rsa_keypair,
+        token_factory,
+        analytics_data,
+        investigator_data,
+    ):
+        _, public_key_pem = rsa_keypair
+        app.dependency_overrides[get_public_key] = lambda: public_key_pem
+
+        token = token_factory(
+            sub="user-123",
+            azp="analytics-api",
+            resource_access={
+                "analytics-api": {"roles": ["search"]},
+                "investigator-api": {"roles": ["search"]},
+            },
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                "/api/v1/search?q=report&mode=aggregated",
                 headers={"Authorization": f"Bearer {token}"},
             )
 
@@ -220,7 +255,7 @@ class TestSearchEndpoint:
         assert resp.status_code == 200
 
         repo = SearchAuditLogRepository(session)
-        entries = repo.list()
+        entries = repo.list_all()
         assert len(entries) >= 1
         match = any(
             e.user_id == "user-123" and e.app == "analytics" and "quarterly" in e.query
