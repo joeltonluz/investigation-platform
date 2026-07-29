@@ -87,6 +87,24 @@ At the end of each meaningful TDD step, STOP and surface a checkpoint instead of
 5. Only reach a checkpoint when the repo is in a runnable state (suite green, except the one
    intentionally-red new test in step 1). Never checkpoint on half-written code.
 
+### OpenSpec lifecycle checkpoints
+
+The OpenSpec workflow also changes files on disk, so surface a suggested-commit checkpoint at
+these two points as well (same rules: print the command, never run it, list specific files):
+
+- **After a proposal is created and reviewed** (`/opsx-propose` + human edits to
+  `proposal.md` / `design.md` / `tasks.md`), print:
+     ```
+     git add openspec/changes/<name>/ && git commit -m "docs: add proposal for <name>"
+     ```
+- **After a change is archived** (`/opsx-archive`), the change folder is moved into the
+  archive. Print a checkpoint for that move, e.g.
+     ```
+     git add openspec/ && git commit -m "chore: archive <name> change"
+     ```
+  Stage the actual paths that moved (both the removed source and the new archived location)
+  so the rename is captured in one commit.
+
 ## Tooling notes
 
 - `ruff` config does not exist yet; it must be created (e.g. in `pyproject.toml`) as part of
