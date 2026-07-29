@@ -61,9 +61,9 @@ class TestFlattenPermissions:
 
 
 class TestGetCurrentUser:
-    def test_valid_token_returns_user(self, rsa_keypair, token_factory):
+    async def test_valid_token_returns_user(self, rsa_keypair, token_factory):
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
 
         from app.auth.dependencies import get_current_user, get_public_key
 
@@ -89,8 +89,10 @@ class TestGetCurrentUser:
             },
         )
 
-        client = TestClient(app)
-        resp = client.get("/me", headers={"Authorization": f"Bearer {token}"})
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -98,9 +100,9 @@ class TestGetCurrentUser:
         assert data["app_client_id"] == "analytics-api"
         assert "analytics:search" in data["permissions"]
 
-    def test_missing_token_returns_401(self, rsa_keypair):
+    async def test_missing_token_returns_401(self, rsa_keypair):
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
 
         from app.auth.dependencies import get_current_user, get_public_key
 
@@ -114,14 +116,16 @@ class TestGetCurrentUser:
 
         app.dependency_overrides[get_public_key] = lambda: public_key_pem
 
-        client = TestClient(app)
-        resp = client.get("/me")
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/me")
 
         assert resp.status_code == 401
 
-    def test_invalid_token_returns_401(self, rsa_keypair):
+    async def test_invalid_token_returns_401(self, rsa_keypair):
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
 
         from app.auth.dependencies import get_current_user, get_public_key
 
@@ -135,16 +139,18 @@ class TestGetCurrentUser:
 
         app.dependency_overrides[get_public_key] = lambda: public_key_pem
 
-        client = TestClient(app)
-        resp = client.get("/me", headers={"Authorization": "Bearer invalid"})
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get("/me", headers={"Authorization": "Bearer invalid"})
 
         assert resp.status_code == 401
 
 
 class TestRequirePermission:
-    def test_permission_present_passes(self, rsa_keypair, token_factory):
+    async def test_permission_present_passes(self, rsa_keypair, token_factory):
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
 
         from app.auth.dependencies import (
             get_public_key,
@@ -169,14 +175,18 @@ class TestRequirePermission:
             },
         )
 
-        client = TestClient(app)
-        resp = client.get("/search", headers={"Authorization": f"Bearer {token}"})
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                "/search", headers={"Authorization": f"Bearer {token}"}
+            )
 
         assert resp.status_code == 200
 
-    def test_permission_absent_returns_403(self, rsa_keypair, token_factory):
+    async def test_permission_absent_returns_403(self, rsa_keypair, token_factory):
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+        from httpx import ASGITransport, AsyncClient
 
         from app.auth.dependencies import (
             get_public_key,
@@ -201,7 +211,11 @@ class TestRequirePermission:
             },
         )
 
-        client = TestClient(app)
-        resp = client.get("/search", headers={"Authorization": f"Bearer {token}"})
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                "/search", headers={"Authorization": f"Bearer {token}"}
+            )
 
         assert resp.status_code == 403
