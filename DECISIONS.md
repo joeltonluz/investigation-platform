@@ -329,6 +329,49 @@ aderente ao enunciado: 403 quando o usuário não tem a permissão da aplicaçã
 
 ---
 
+## ADR-012 — Integração com Keycloak: `start-dev` + import de realm, validação via JWKS
+
+**Contexto.** A autenticação foi construída e testada com um mock (par de chaves RSA local,
+ADR-007). Para validar a arquitetura de ponta a ponta e demonstrar SSO real, o Keycloak
+precisa rodar de verdade. Havia decisões sobre como executá-lo, como configurá-lo e como a
+aplicação passaria a validar tokens reais.
+
+**Decisão.**
+- **Execução:** Keycloak em Docker no modo `start-dev`, que usa um banco H2 embutido. Não usa
+  o Postgres da aplicação — misturar as tabelas do Keycloak com as tabelas de domínio poluiria
+  o schema e confundiria as migrations. O `start-dev` é o modo próprio para desenvolvimento e
+  demonstração.
+- **Configuração do realm:** configurado manualmente pelo painel (realm `plataforma`, um client
+  por app, role `search` por client, usuário de teste) e então **exportado como JSON**, que é
+  versionado e reimportado no boot via `--import-realm`. O avaliador sobe o container e o realm
+  já vem pronto, sem configuração manual.
+- **Validação na aplicação:** dois modos, selecionados por `AUTH_MODE`. Em `mock` (testes), a
+  chave é o par RSA local. Em `keycloak`, a aplicação busca o JWKS do realm, seleciona a chave
+  pelo `kid` do token e valida a assinatura RS256; o JWKS é cacheado em memória e reobtido
+  quando aparece um `kid` desconhecido (rotação de chave). Além da assinatura, valida-se o
+  `iss` (emissor) e a expiração.
+
+**Consequências.**
+- Concretiza o ADR-007: o código de extração de claims e autorização é o mesmo nos dois modos;
+  apenas a origem da chave muda. Confirmado na prática — um token real do Keycloak sai com o
+  mesmo formato `resource_access` que o mock produzia (ADR-010).
+- A suíte de testes continua rodando em modo `mock`, sem depender do Keycloak no ar — rápida e
+  isolada.
+- Validar `iss` e expiração, além da assinatura, fecha uma lacuna de segurança: uma assinatura
+  válida de outro emissor não é aceita.
+- Custo assumido: `start-dev` e H2 não são apropriados para produção. Em produção, o Keycloak
+  usaria um banco dedicado (ex.: Postgres próprio) e o modo `start`, com credenciais de admin
+  vindas de secrets, não do compose. A escolha atual é deliberada para o escopo da prova.
+
+**Alternativas consideradas.** Keycloak com Postgres dedicado seria mais realista, mas
+adicionaria configuração de banco e ordem de inicialização sem demonstrar competência adicional
+sobre a aplicação em si — o ganho não justifica o custo e o risco na demo. Escrever o JSON do
+realm à mão (em vez de exportar) foi descartado por ser propenso a erro; configurar no painel e
+exportar captura a configuração correta, incluindo os mappers. Validar apenas a assinatura (sem
+`iss`) foi descartado por ser uma validação incompleta do ponto de vista de segurança.
+
+---
+
 ## Decisões ainda em aberto
 
 - _(nenhuma no momento — o formato do claim de permissões, antes em aberto, foi fixado no

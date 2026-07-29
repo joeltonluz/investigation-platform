@@ -16,5 +16,21 @@ services:
       timeout: 5s
       retries: 5
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: investigation_platform_keycloak
+    command: start-dev --import-realm
+    environment:
+      # Admin console credentials (dev only — do not use in production)
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # start-dev uses an embedded H2 database; no external DB needed.
+    ports:
+      - "8080:8080"
+    volumes:
+      # Any realm-*.json placed here is imported on boot (thanks to --import-realm).
+      # Starts empty; you will export your manually-configured realm into this folder.
+      - ./keycloak/import:/opt/keycloak/data/import
+
 volumes:
   pgdata:

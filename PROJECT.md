@@ -71,6 +71,24 @@ These rules override any default behavior. Follow them literally.
 
 **Do not add any dependency not listed here without the human approving it first.**
 
+### 3.1 Configuration via environment (no secrets in code)
+
+All configuration comes from environment variables, loaded by `pydantic-settings` from a
+`.env` file (gitignored) or the real environment. **No secret or credential is hardcoded as a
+default in `config.py`.** A committed `.env.example` documents every variable with placeholder
+values.
+
+Environment variables:
+
+| Variable          | Purpose                                                                 |
+|-------------------|-------------------------------------------------------------------------|
+| `DATABASE_URL`    | Postgres connection string (no password baked into source).             |
+| `AUTH_MODE`       | `keycloak` (validate against Keycloak JWKS) or `mock` (local RSA key, used by tests). |
+| `KEYCLOAK_ISSUER` | Realm issuer URL, e.g. `http://localhost:8080/realms/plataforma`.       |
+| `KEYCLOAK_JWKS_URL` | JWKS endpoint; derivable as `<issuer>/protocol/openid-connect/certs`. |
+
+The test suite runs in `mock` mode (local RSA keypair) and never depends on a running Keycloak.
+
 ---
 
 ## 4. Database rationale (why Postgres from day 1)
@@ -182,6 +200,13 @@ JWT handling:
 - In tests, Keycloak is **mocked**: a local RSA keypair signs test tokens; the auth
   dependency validates against the corresponding public key. Same code path as production —
   only the key source differs (local key in tests, Keycloak JWKS in the running stack).
+- Two validation modes, selected by `AUTH_MODE` (see §3.1):
+  - `mock`: validate against the local RSA public key (tests).
+  - `keycloak`: fetch the realm's JWKS, select the key matching the token's `kid` header, and
+    verify the RS256 signature. The JWKS is cached in memory and refreshed on an unknown `kid`
+    (handles key rotation). In this mode the auth code **also verifies** the `iss` claim equals
+    `KEYCLOAK_ISSUER` and that the token is not expired — signature validity alone is not enough.
+  Both modes end at the same claim-extraction logic below.
 - The auth dependency extracts three things from the token:
   - `user_id` — from `sub`.
   - `app_client_id` — from `azp` (authorized party; identifies which app/client the token was
