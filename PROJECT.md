@@ -182,13 +182,39 @@ JWT handling:
 - In tests, Keycloak is **mocked**: a local RSA keypair signs test tokens; the auth
   dependency validates against the corresponding public key. Same code path as production —
   only the key source differs (local key in tests, Keycloak JWKS in the running stack).
-- The auth dependency extracts: `user_id` (`sub`), `app_client_id` (`azp` — identifies
-  which app/client), and `permissions` (from client roles / `realm_access` or a
-  `permissions` claim — document the exact shape in `auth/`).
+- The auth dependency extracts three things from the token:
+  - `user_id` — from `sub`.
+  - `app_client_id` — from `azp` (authorized party; identifies which app/client the token was
+    issued for). Used **only for audit logging**, not for authorization (see below).
+  - `permissions` — derived from `resource_access.<client>.roles`, the standard Keycloak
+    structure for client roles (chosen in DECISIONS.md ADR-001 and ADR-010). A helper flattens
+    this nested structure into a set of `"<app>:<action>"` strings (e.g. a `search` role under
+    the `analytics-api` client becomes the permission `analytics:search`). The mapping from
+    client name to permission prefix is explicit and centralized.
 - Authorization is a separate dependency (`require_permission("analytics:search")`) so the
-  permission check is declarative at the route and independently testable.
+  permission check is declarative at the route and independently testable. It checks only that
+  the required permission is present in the flattened set — it does **not** require `azp` to
+  match the requested app. `azp` identifies the calling app for the audit trail; the roles
+  decide what the user may do. Each claim does one job.
 
-Document the **expected JWT structure** in a docstring/README fragment near the auth code.
+### Expected JWT structure (mirrors Keycloak)
+
+```json
+{
+  "sub": "user-123",
+  "azp": "analytics-api",
+  "resource_access": {
+    "analytics-api": { "roles": ["search"] },
+    "investigator-api": { "roles": ["search"] }
+  },
+  "exp": 0,
+  "iat": 0
+}
+```
+
+The mock signs tokens in exactly this shape so that switching to a real Keycloak requires no
+change to the parsing/authorization code — only the signing key source changes. Document this
+structure in a docstring near the auth code as well.
 
 ---
 

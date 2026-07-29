@@ -245,8 +245,45 @@ porque seu conjunto de valores tende a crescer conforme novas aplicações sejam
 
 ---
 
+## ADR-010 — Estrutura do JWT: permissões em `resource_access`, `azp` só para auditoria
+
+**Contexto.** A autenticação precisa de um formato concreto de token: onde as permissões
+moram e como o `azp` (claim que identifica a app de origem) participa da autorização. O
+formato estava propositalmente em aberto (ver ADR-007) até se decidir se o Keycloak seria
+apenas mockado ou também executado de verdade. A decisão foi subir o Keycloak real em Docker,
+o que torna o alinhamento com o formato nativo do Keycloak um fator central.
+
+**Decisão.** As permissões residem em `resource_access.<client>.roles` — a estrutura padrão do
+Keycloak para *client roles*, coerente com a decisão de um client por app (ADR-001). Um helper
+achata essa estrutura aninhada em um conjunto de permissões no formato `"<app>:<action>"`
+(ex.: uma role `search` sob o client `analytics-api` vira a permissão `analytics:search`). O
+`azp` é extraído e usado **apenas para auditoria** (registrar de qual aplicação a requisição
+partiu), não como trava de autorização: a autorização depende exclusivamente das roles.
+
+**Consequências.**
+- O token do mock tem exatamente a mesma estrutura que o token real do Keycloak. Ao plugar o
+  Keycloak de verdade, o código de parsing e de autorização não muda — apenas a origem da
+  chave de assinatura (chave local nos testes, JWKS do Keycloak em execução). É a concretização
+  do ADR-007.
+- O parsing é um pouco mais trabalhoso por a estrutura ser aninhada, mas essa complexidade fica
+  isolada num único helper; o restante do código de autorização trabalha com um conjunto plano
+  de strings de permissão.
+- Separação clara de responsabilidades entre claims: `azp` diz *de onde veio* (auditoria), as
+  roles dizem *o que pode fazer* (autorização). Cada claim tem um único papel, sem sobreposição.
+
+**Alternativas consideradas.** Um claim customizado `permissions` (lista plana de strings)
+seria mais simples de parsear e idêntico ao padrão comum em aplicações Node/NestJS, mas **não**
+é o que o Keycloak produz por padrão — exigiria configurar um protocol mapper customizado no
+Keycloak para achatar as roles nesse formato, adicionando configuração e risco na integração
+real. Foi descartado justamente porque contrariaria o objetivo de trocar o mock pelo Keycloak
+real sem alterar código. Exigir que o `azp` fosse consistente com a permissão pedida (trava de
+autorização, não só auditoria) foi descartado por adicionar uma regra sem respaldo explícito no
+enunciado: as roles já bastam para autorizar, e o `azp` já cobre o requisito de registrar a app
+de origem.
+
+---
+
 ## Decisões ainda em aberto
 
-- **Formato exato do claim de permissões no JWT.** Depende da configuração dos mappers do
-  Keycloak. Será fixado e documentado quando a stack de autenticação for montada (ver
-  ADR-007).
+- _(nenhuma no momento — o formato do claim de permissões, antes em aberto, foi fixado no
+  ADR-010.)_
