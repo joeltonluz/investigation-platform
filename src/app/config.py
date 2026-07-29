@@ -1,8 +1,17 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = (
-        "postgresql+psycopg://investigation:password@localhost:5432/investigation"
-    )
+    model_config = SettingsConfigDict(env_file=".env")
+
+    database_url: str = ""
     public_key: str = ""
+
+    auth_mode: str = "keycloak"
+    keycloak_issuer: str = ""
+
+    @property
+    def keycloak_jwks_url(self) -> str:
+        if self.keycloak_issuer:
+            return f"{self.keycloak_issuer}/protocol/openid-connect/certs"
+        return ""
