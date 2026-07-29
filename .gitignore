@@ -1,0 +1,63 @@
+# ---- Python bytecode & caches ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---- Packaging / build artifacts ----
+# The .egg-info you saw in your tree is a generated build artifact — never commit it.
+*.egg-info/
+*.egg
+build/
+dist/
+*.manifest
+*.spec
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- uv (your package manager) ----
+# Keep uv.lock committed (it pins exact versions for reproducibility).
+# Only ignore the local cache if one appears.
+.uv/
+
+# ---- Test & coverage tooling ----
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.cache/
+
+# ---- Ruff ----
+.ruff_cache/
+
+# ---- Type checkers (in case you add mypy later) ----
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# ---- Environment variables & secrets ----
+# NEVER commit real secrets. Commit a .env.example instead, with placeholder values.
+.env
+.env.*
+!.env.example
+
+# ---- Docker ----
+# Compose override files are usually local-only.
+docker-compose.override.yml
+
+# ---- IDE / editor ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---- OpenCode / local agent scratch (optional) ----
+# If you keep personal, uncommitted notes, put them here.
+NOTES.local.md
