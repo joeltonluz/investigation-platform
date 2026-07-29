@@ -1,3 +1,11 @@
+import os
+
+os.environ["AUTH_MODE"] = "mock"
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg://investigation:password@localhost:5432/investigation",
+)
+
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
