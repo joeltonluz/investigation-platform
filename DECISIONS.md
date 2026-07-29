@@ -245,20 +245,30 @@ porque seu conjunto de valores tende a crescer conforme novas aplicações sejam
 
 ---
 
-## ADR-010 — Estrutura do JWT: permissões em `resource_access`, `azp` só para auditoria
+## ADR-010 — Estrutura do JWT: permissões em `resource_access`; `azp` como app de origem
+
+> **Nota de revisão.** A versão inicial deste ADR afirmava que o `azp` seria usado *apenas para
+> auditoria*, não para autorização. Ao detalhar a Parte 2 do enunciado (endpoint de busca),
+> ficou claro que a requisição é sempre de *uma aplicação específica* — e o enunciado exige
+> "validar se o usuário tem permissão para aquela aplicação específica". O `azp` é o que
+> identifica essa aplicação de origem. Portanto o `azp` **participa da autorização** ao definir
+> qual permissão é exigida. A decisão de escopo da busca está detalhada no ADR-011; este ADR
+> mantém apenas a estrutura do token e o papel do `azp`.
 
 **Contexto.** A autenticação precisa de um formato concreto de token: onde as permissões
-moram e como o `azp` (claim que identifica a app de origem) participa da autorização. O
-formato estava propositalmente em aberto (ver ADR-007) até se decidir se o Keycloak seria
-apenas mockado ou também executado de verdade. A decisão foi subir o Keycloak real em Docker,
-o que torna o alinhamento com o formato nativo do Keycloak um fator central.
+moram e qual o papel do `azp` (claim que identifica a app de origem). O formato estava
+propositalmente em aberto (ver ADR-007) até se decidir se o Keycloak seria apenas mockado ou
+também executado de verdade. A decisão foi subir o Keycloak real em Docker, o que torna o
+alinhamento com o formato nativo do Keycloak um fator central.
 
 **Decisão.** As permissões residem em `resource_access.<client>.roles` — a estrutura padrão do
 Keycloak para *client roles*, coerente com a decisão de um client por app (ADR-001). Um helper
 achata essa estrutura aninhada em um conjunto de permissões no formato `"<app>:<action>"`
 (ex.: uma role `search` sob o client `analytics-api` vira a permissão `analytics:search`). O
-`azp` é extraído e usado **apenas para auditoria** (registrar de qual aplicação a requisição
-partiu), não como trava de autorização: a autorização depende exclusivamente das roles.
+`azp` é extraído e cumpre dois papéis: é registrado na auditoria (de qual aplicação a
+requisição partiu) e identifica a aplicação de origem da busca, que determina qual permissão
+`"<app>:search"` é exigida (ver ADR-011). A dependência genérica `require_permission` em si não
+lê o `azp`; é o fluxo de busca que traduz o `azp` na permissão a exigir.
 
 **Consequências.**
 - O token do mock tem exatamente a mesma estrutura que o token real do Keycloak. Ao plugar o
@@ -268,18 +278,54 @@ partiu), não como trava de autorização: a autorização depende exclusivament
 - O parsing é um pouco mais trabalhoso por a estrutura ser aninhada, mas essa complexidade fica
   isolada num único helper; o restante do código de autorização trabalha com um conjunto plano
   de strings de permissão.
-- Separação clara de responsabilidades entre claims: `azp` diz *de onde veio* (auditoria), as
-  roles dizem *o que pode fazer* (autorização). Cada claim tem um único papel, sem sobreposição.
+- Papéis dos claims: o `sub` identifica o usuário, as roles em `resource_access` dizem *o que
+  ele pode fazer*, e o `azp` diz *de qual aplicação a requisição partiu* — usado tanto na
+  auditoria quanto para selecionar a permissão exigida na busca.
 
 **Alternativas consideradas.** Um claim customizado `permissions` (lista plana de strings)
 seria mais simples de parsear e idêntico ao padrão comum em aplicações Node/NestJS, mas **não**
 é o que o Keycloak produz por padrão — exigiria configurar um protocol mapper customizado no
 Keycloak para achatar as roles nesse formato, adicionando configuração e risco na integração
 real. Foi descartado justamente porque contrariaria o objetivo de trocar o mock pelo Keycloak
-real sem alterar código. Exigir que o `azp` fosse consistente com a permissão pedida (trava de
-autorização, não só auditoria) foi descartado por adicionar uma regra sem respaldo explícito no
-enunciado: as roles já bastam para autorizar, e o `azp` já cobre o requisito de registrar a app
-de origem.
+real sem alterar código.
+
+---
+
+## ADR-011 — Escopo da busca: por aplicação de origem (`azp`), com agregação para múltiplas permissões
+
+**Contexto.** O endpoint `/api/v1/search` é compartilhado pelas três aplicações mas se comporta
+de forma diferente conforme a aplicação e as permissões do usuário. O enunciado da Parte 2 é
+explícito: o endpoint deve "saber de qual aplicação veio a requisição", "validar se o usuário
+tem permissão para aquela aplicação específica" e "buscar apenas nos dados relevantes para
+aquela aplicação". Ao mesmo tempo, o enunciado exige um caso agregado: "usuário com ambas as
+permissões recebe resultados agregados".
+
+**Decisão.** O escopo padrão da busca é **por aplicação de origem**, identificada pelo `azp` do
+token. O fluxo: identifica a aplicação pelo `azp` → exige a permissão daquela aplicação
+(`"<app>:search"`), retornando **403** se ausente → executa a Strategy daquela aplicação →
+registra a busca na auditoria (usuário, aplicação, query) → retorna no formato próprio da
+aplicação (Analytics agregado, Investigator completo, Case Manager apenas metadados e apenas os
+casos atribuídos ao usuário). O caso **agregado** ocorre quando a busca é unificada (não
+vinculada a uma única aplicação de origem): o SearchService executa as Strategies de todas as
+aplicações para as quais o usuário tem permissão e combina os resultados, agrupados por
+aplicação.
+
+**Consequências.**
+- Alinhamento direto com o enunciado: uma requisição, uma aplicação de origem, a permissão
+  daquela aplicação. O teste obrigatório "usuário sem permissão → 403" fica inequívoco.
+- O padrão Strategy (ADR-003, ADR-004) sustenta os dois modos: o modo por aplicação executa uma
+  Strategy; o modo agregado executa várias e combina. O endpoint não ganha ramificação por
+  aplicação além de selecionar a(s) Strategy(ies).
+- O `azp` passa a participar da autorização (define qual permissão exigir), o que revisou a
+  posição inicial do ADR-010 (ver a nota de revisão naquele ADR).
+- Resultados são envelopados por aplicação (cada bloco identifica sua origem), o que torna o
+  modo agregado uma composição natural do modo por aplicação.
+
+**Alternativas consideradas.** Buscar sempre em **todas** as aplicações que o usuário tem
+permissão (ignorando o `azp` como escopo) foi descartado por contrariar o texto do enunciado,
+que fala em "aquela aplicação específica" de onde a requisição veio. Tratar 403 como "faltou
+permissão em alguma das aplicações pedidas" foi descartado em favor da regra mais simples e
+aderente ao enunciado: 403 quando o usuário não tem a permissão da aplicação de origem.
 
 ---
 
