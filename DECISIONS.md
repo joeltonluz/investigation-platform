@@ -183,6 +183,68 @@ acoplar a suíte a uma infraestrutura pesada e lenta, contrariando a agilidade q
 
 ---
 
+## ADR-008 — Chave primária UUID, manipulada como string na aplicação
+
+**Contexto.** As tabelas do enunciado têm `id`, sem tipo especificado. As opções realistas
+eram inteiro auto-incremento ou UUID. O projeto é descrito como uma plataforma distribuída
+on-premises, o que favorece identificadores únicos globalmente.
+
+**Decisão.** Chave primária UUID em todas as tabelas. A coluna usa o tipo UUID nativo do
+Postgres, com o valor gerado no **banco** via `server_default gen_random_uuid()` (função
+nativa do Postgres 16). Na aplicação, o id é manipulado como **string** (`Mapped[str]` com
+`UUID(as_uuid=False)` no SQLAlchemy), não como objeto `uuid.UUID` do Python.
+
+**Consequências.**
+- IDs únicos sem coordenação central — adequado a um sistema distribuído — e sem expor o
+  volume de registros, como um inteiro sequencial exporia.
+- Gerar o UUID no banco (e não na aplicação) garante que registros criados fora da aplicação
+  — como o seed via SQL — também recebam id automaticamente.
+- Trade-off assumido: manipular o id como string, e não como objeto `uuid.UUID`, simplifica a
+  camada de aplicação (evita conversões em models e repositórios) ao custo de não ter as
+  operações tipadas do objeto UUID. A coluna no banco continua sendo UUID nativo (indexação,
+  armazenamento e validação de formato são os do tipo nativo); apenas a representação em
+  Python é string. Caso operações sobre UUID passem a ser necessárias, a mudança para
+  `as_uuid=True` é localizada.
+
+**Alternativas consideradas.** Inteiro auto-incremento foi descartado por ser menos coerente
+com o contexto distribuído e por expor volume/ordem de criação. Manipular como objeto
+`uuid.UUID` (`as_uuid=True`) foi preterido em favor da simplicidade da string, já que o
+projeto não precisa das operações do objeto.
+
+---
+
+## ADR-009 — Campos de valores fixos como ENUM nativo do Postgres
+
+**Contexto.** Dois campos têm um conjunto fixo de valores válidos: `investigator_entities.type`
+∈ {person, company, transaction, document} e `case_manager_cases.status` ∈ {open, in_progress,
+closed}. A escolha era entre string com validação na aplicação, ou tipo ENUM nativo do banco.
+
+**Decisão.** ENUM nativo do Postgres para ambos os campos. A integridade é garantida na
+camada de dados: o banco recusa qualquer valor fora do conjunto, independentemente da
+aplicação. Na migration, o ciclo de vida dos tipos enum é controlado explicitamente — criados
+com `checkfirst=True` antes das tabelas e removidos no downgrade —, tornando a migration
+segura para ciclos repetidos de upgrade/downgrade.
+
+**Consequências.**
+- Integridade garantida no nível mais baixo (o banco), não apenas na aplicação. É impossível
+  inserir um `type` ou `status` inválido, mesmo por acesso direto ao banco.
+- Custo assumido conscientemente: alterar um enum do Postgres depois é trabalhoso — adicionar
+  um valor exige `ALTER TYPE ... ADD VALUE`, e remover um valor praticamente exige recriar o
+  tipo. Para este projeto os conjuntos são fixos e conhecidos, então o custo é baixo. Se o
+  domínio exigisse valores frequentemente mutáveis, uma string validada na aplicação seria
+  preferível.
+- A migration exigiu tratamento explícito da criação/remoção dos tipos (não confiar na
+  criação implícita do `create_table`) para não quebrar em ciclos downgrade→upgrade.
+
+**Alternativas consideradas.** String com validação na aplicação seria mais flexível e
+tornaria as migrations triviais, mas moveria a garantia de integridade para fora do banco —
+um valor inválido inserido por qualquer via que não passe pela aplicação não seria barrado.
+Priorizou-se integridade sobre flexibilidade, dado que os conjuntos de valores são estáveis.
+O campo `search_audit_log.app`, por outro lado, foi mantido como string simples, justamente
+porque seu conjunto de valores tende a crescer conforme novas aplicações sejam integradas.
+
+---
+
 ## Decisões ainda em aberto
 
 - **Formato exato do claim de permissões no JWT.** Depende da configuração dos mappers do
