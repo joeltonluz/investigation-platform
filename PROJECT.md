@@ -185,17 +185,22 @@ JWT handling:
 - The auth dependency extracts three things from the token:
   - `user_id` — from `sub`.
   - `app_client_id` — from `azp` (authorized party; identifies which app/client the token was
-    issued for). Used **only for audit logging**, not for authorization (see below).
+    issued for). Two uses: it is recorded in the audit log, **and** it identifies the origin
+    app for the search endpoint (see §6 and DECISIONS.md ADR-011), which determines which
+    app-specific permission is required. The `require_permission` dependency itself remains
+    generic and does not read `azp`; the search flow uses `azp` to decide *which* permission to
+    require.
   - `permissions` — derived from `resource_access.<client>.roles`, the standard Keycloak
     structure for client roles (chosen in DECISIONS.md ADR-001 and ADR-010). A helper flattens
     this nested structure into a set of `"<app>:<action>"` strings (e.g. a `search` role under
     the `analytics-api` client becomes the permission `analytics:search`). The mapping from
     client name to permission prefix is explicit and centralized.
 - Authorization is a separate dependency (`require_permission("analytics:search")`) so the
-  permission check is declarative at the route and independently testable. It checks only that
-  the required permission is present in the flattened set — it does **not** require `azp` to
-  match the requested app. `azp` identifies the calling app for the audit trail; the roles
-  decide what the user may do. Each claim does one job.
+  permission check is declarative and independently testable. It checks only that the required
+  permission is present in the flattened set. It is the **search flow** (not this generic
+  dependency) that maps the `azp` origin app to the permission that must be present — so a
+  request originating from the Analytics client requires `analytics:search`, and its absence
+  yields 403 (see ADR-011).
 
 ### Expected JWT structure (mirrors Keycloak)
 
