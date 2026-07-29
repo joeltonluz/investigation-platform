@@ -16,5 +16,11 @@ class AnalyticsReportRepository:
     def get(self, report_id: str) -> AnalyticsReport | None:
         return self._session.get(AnalyticsReport, report_id)
 
-    def list(self) -> list[AnalyticsReport]:
+    def list_all(self) -> list[AnalyticsReport]:
         return list(self._session.scalars(select(AnalyticsReport)))
+
+    def search_by_content(self, query: str) -> list[AnalyticsReport]:
+        stmt = select(AnalyticsReport).where(
+            AnalyticsReport.content.ilike(f"%{query}%")
+        )
+        return list(self._session.scalars(stmt))

@@ -16,5 +16,5 @@ class SearchAuditLogRepository:
     def get(self, entry_id: str) -> SearchAuditLog | None:
         return self._session.get(SearchAuditLog, entry_id)
 
-    def list(self) -> list[SearchAuditLog]:
+    def list_all(self) -> list[SearchAuditLog]:
         return list(self._session.scalars(select(SearchAuditLog)))

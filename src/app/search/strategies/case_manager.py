@@ -1,20 +1,16 @@
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.auth.models import User
-from app.db.models import CaseManagerCase
+from app.db.repositories.case_manager_cases import (
+    CaseManagerCaseRepository,
+)
 from app.search.strategies.base import SearchStrategy
 
 
 class CaseManagerSearchStrategy(SearchStrategy):
-    def __init__(self, session: Session) -> None:
-        self._session = session
+    def __init__(self, repo: CaseManagerCaseRepository) -> None:
+        self._repo = repo
 
     def search(self, query: str, user: User) -> list[dict]:
-        stmt = select(CaseManagerCase).where(
-            CaseManagerCase.assigned_to == user.user_id
-        )
-        cases = self._session.scalars(stmt).all()
+        cases = self._repo.list_assigned_to(user.user_id)
         return [
             {
                 "id": c.id,

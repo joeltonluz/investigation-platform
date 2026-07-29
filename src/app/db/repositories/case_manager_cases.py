@@ -16,5 +16,9 @@ class CaseManagerCaseRepository:
     def get(self, case_id: str) -> CaseManagerCase | None:
         return self._session.get(CaseManagerCase, case_id)
 
-    def list(self) -> list[CaseManagerCase]:
+    def list_all(self) -> list[CaseManagerCase]:
         return list(self._session.scalars(select(CaseManagerCase)))
+
+    def list_assigned_to(self, user_id: str) -> list[CaseManagerCase]:
+        stmt = select(CaseManagerCase).where(CaseManagerCase.assigned_to == user_id)
+        return list(self._session.scalars(stmt))

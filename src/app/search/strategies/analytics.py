@@ -1,20 +1,14 @@
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.auth.models import User
-from app.db.models import AnalyticsReport
+from app.db.repositories.analytics_reports import AnalyticsReportRepository
 from app.search.strategies.base import SearchStrategy
 
 
 class AnalyticsSearchStrategy(SearchStrategy):
-    def __init__(self, session: Session) -> None:
-        self._session = session
+    def __init__(self, repo: AnalyticsReportRepository) -> None:
+        self._repo = repo
 
     def search(self, query: str, user: User) -> list[dict]:
-        stmt = select(AnalyticsReport).where(
-            AnalyticsReport.content.ilike(f"%{query}%")
-        )
-        reports = self._session.scalars(stmt).all()
+        reports = self._repo.search_by_content(query)
         return [
             {
                 "title": r.title,

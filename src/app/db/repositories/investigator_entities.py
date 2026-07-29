@@ -16,5 +16,11 @@ class InvestigatorEntityRepository:
     def get(self, entity_id: str) -> InvestigatorEntity | None:
         return self._session.get(InvestigatorEntity, entity_id)
 
-    def list(self) -> list[InvestigatorEntity]:
+    def list_all(self) -> list[InvestigatorEntity]:
         return list(self._session.scalars(select(InvestigatorEntity)))
+
+    def search_by_name(self, query: str) -> list[InvestigatorEntity]:
+        stmt = select(InvestigatorEntity).where(
+            InvestigatorEntity.name.ilike(f"%{query}%")
+        )
+        return list(self._session.scalars(stmt))

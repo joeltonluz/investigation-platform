@@ -1,20 +1,16 @@
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.auth.models import User
-from app.db.models import InvestigatorEntity
+from app.db.repositories.investigator_entities import (
+    InvestigatorEntityRepository,
+)
 from app.search.strategies.base import SearchStrategy
 
 
 class InvestigatorSearchStrategy(SearchStrategy):
-    def __init__(self, session: Session) -> None:
-        self._session = session
+    def __init__(self, repo: InvestigatorEntityRepository) -> None:
+        self._repo = repo
 
     def search(self, query: str, user: User) -> list[dict]:
-        stmt = select(InvestigatorEntity).where(
-            InvestigatorEntity.name.ilike(f"%{query}%")
-        )
-        entities = self._session.scalars(stmt).all()
+        entities = self._repo.search_by_name(query)
         return [
             {
                 "id": e.id,
