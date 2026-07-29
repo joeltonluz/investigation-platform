@@ -16,6 +16,7 @@ dependencies = [
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
     "python-jose[cryptography]>=3.3",
+    "httpx>=0.27",
 ]
 
 [tool.setuptools.packages.find]
@@ -25,7 +26,6 @@ where = ["src"]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio",
-    "httpx>=0.27",
     "ruff>=0.7",
 ]
 
