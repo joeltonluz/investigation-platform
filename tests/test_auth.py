@@ -219,3 +219,82 @@ class TestRequirePermission:
             )
 
         assert resp.status_code == 403
+
+
+class TestJWKSValidation:
+    def _build_jwk_entry(self, public_key, kid):
+        from jose import jwk as jwk_mod
+
+        entry = jwk_mod.construct(public_key, algorithm="RS256").to_dict()
+        entry["kid"] = kid
+        return entry
+
+    async def test_valid_token_with_jwks_returns_payload(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa as rsa_mod
+
+        from app.auth.jwks import JWKSFetcher, validate_token_with_jwks
+
+        private_key = rsa_mod.generate_private_key(65537, 2048)
+        entry = self._build_jwk_entry(private_key.public_key(), "key-1")
+        fetcher = JWKSFetcher.with_keys({"key-1": entry})
+
+        token = jwt.encode(
+            {"sub": "u1", "azp": "test", "iss": "http://issuer", "exp": 9999999999},
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "key-1"},
+        )
+
+        payload = await validate_token_with_jwks(token, fetcher, "http://issuer")
+        assert payload["sub"] == "u1"
+        assert payload["azp"] == "test"
+        assert payload["iss"] == "http://issuer"
+
+    async def test_wrong_issuer_raises_error(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa as rsa_mod
+
+        from app.auth.jwks import JWKSFetcher, validate_token_with_jwks
+
+        private_key = rsa_mod.generate_private_key(65537, 2048)
+        entry = self._build_jwk_entry(private_key.public_key(), "key-1")
+        fetcher = JWKSFetcher.with_keys({"key-1": entry})
+
+        token = jwt.encode(
+            {
+                "sub": "u1",
+                "azp": "test",
+                "iss": "http://wrong-issuer",
+                "exp": 9999999999,
+            },
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "key-1"},
+        )
+
+        with pytest.raises(InvalidTokenError):
+            await validate_token_with_jwks(token, fetcher, "http://correct-issuer")
+
+    async def test_unknown_kid_triggers_refresh_then_raises_error(self):
+        from unittest.mock import AsyncMock
+
+        from cryptography.hazmat.primitives.asymmetric import rsa as rsa_mod
+
+        from app.auth.jwks import JWKSFetcher, validate_token_with_jwks
+
+        private_key = rsa_mod.generate_private_key(65537, 2048)
+        entry = self._build_jwk_entry(private_key.public_key(), "existing-key")
+
+        fetcher = JWKSFetcher.with_keys({"existing-key": entry})
+        fetcher._fetch_jwks = AsyncMock(return_value={"existing-key": entry})
+
+        token = jwt.encode(
+            {"sub": "u1", "iss": "http://issuer", "exp": 9999999999},
+            private_key,
+            algorithm="RS256",
+            headers={"kid": "unknown-kid"},
+        )
+
+        with pytest.raises(InvalidTokenError):
+            await validate_token_with_jwks(token, fetcher, "http://issuer")
+
+        fetcher._fetch_jwks.assert_awaited_once()
