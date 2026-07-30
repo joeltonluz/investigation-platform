@@ -262,3 +262,59 @@ class TestSearchEndpoint:
             for e in entries
         )
         assert match
+
+    async def test_audit_log_is_persisted_to_database(
+        self,
+        app,
+        session,
+        rsa_keypair,
+        token_factory,
+        analytics_data,
+    ):
+        """Verify the audit log entry is actually committed (not just flushed).
+
+        Uses a separate session to prove the data survives the transaction.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session as SASession
+
+        from app.config import Settings
+
+        _, public_key_pem = rsa_keypair
+        app.dependency_overrides[get_public_key] = lambda: public_key_pem
+        # Remove get_db override so real get_db() runs (and should commit)
+        app.dependency_overrides.pop(get_db, None)
+
+        token = token_factory(
+            sub="user-123",
+            azp="analytics-api",
+            resource_access={"analytics-api": {"roles": ["search"]}},
+        )
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                "/api/v1/search?q=quarterly",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+
+        # Open a separate session to verify the audit log was committed
+        other_engine = create_engine(Settings().database_url)
+        other_session = SASession(bind=other_engine)
+        try:
+            repo = SearchAuditLogRepository(other_session)
+            entries = repo.list_all()
+            assert len(entries) >= 1
+            match = any(
+                e.user_id == "user-123"
+                and e.app == "analytics"
+                and "quarterly" in e.query
+                for e in entries
+            )
+            assert match
+        finally:
+            other_session.close()
+            other_engine.dispose()
