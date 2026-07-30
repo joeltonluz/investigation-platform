@@ -60,4 +60,5 @@ docker-compose.override.yml
 
 # ---- OpenCode / local agent scratch (optional) ----
 # If you keep personal, uncommitted notes, put them here.
+_estudos
 NOTES.local.md
