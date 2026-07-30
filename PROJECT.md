@@ -142,25 +142,48 @@ Patterns and rules:
 ```
 investigation-platform/
 ├── openspec/
+├── keycloak/import/            # realm JSON imported by Keycloak on boot
 ├── src/app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI app factory, router registration
-│   ├── config.py            # Settings via pydantic-settings (env-driven)
-│   ├── db.py                # engine, session factory, get_db dependency
-│   ├── auth/                # JWT dependency, claim extraction, permission checks
+│   ├── main.py                 # FastAPI app factory, router registration
+│   ├── config.py               # Settings via pydantic-settings (env-driven)
+│   ├── db/
+│   │   ├── base.py             # declarative Base
+│   │   ├── session.py          # engine, session factory, get_db dependency
+│   │   ├── models.py           # the four SQLAlchemy 2.0 models
+│   │   └── repositories/       # one repository per table (only DB access path)
+│   │       ├── analytics_reports.py
+│   │       ├── investigator_entities.py
+│   │       ├── case_manager_cases.py
+│   │       └── search_audit_log.py
+│   ├── auth/
+│   │   ├── token.py            # RS256 validation (mock mode), expected JWT structure
+│   │   ├── jwks.py             # Keycloak JWKS fetch + validation (keycloak mode)
+│   │   ├── permissions.py      # flatten resource_access -> {"app:role"}
+│   │   ├── dependencies.py     # get_current_user, require_permission
+│   │   └── models.py           # User (dataclass: user_id, app_client_id, permissions)
 │   ├── search/
-│   │   ├── router.py        # /api/v1/search
-│   │   ├── service.py       # SearchService (dispatch + aggregation)
-│   │   └── strategies/      # analytics.py, investigator.py, case_manager.py
-│   ├── models/              # SQLAlchemy 2.0 models
-│   ├── repositories/        # one repository per table
-│   └── audit/               # AuditService + audit repository
-├── tests/
-├── alembic/
-├── docker-compose.yml
-├── DECISIONS.md             # engineering rationale (reviewer-facing, may be in PT)
+│   │   ├── router.py           # /api/v1/search
+│   │   ├── service.py          # SearchService (dispatch + aggregation)
+│   │   └── strategies/
+│   │       ├── base.py         # SearchStrategy interface
+│   │       ├── analytics.py
+│   │       ├── investigator.py
+│   │       └── case_manager.py
+│   └── audit/
+│       └── service.py          # AuditService (record_search)
+├── tests/                      # test_auth, test_search, test_models, test_health
+├── alembic/                    # migration creating tables, enums, indexes
+├── scripts/seed.py             # seeds 10 rows into the three domain tables
+├── docker-compose.yml          # Postgres + Keycloak
+├── .env.example
+├── DECISIONS.md                # engineering rationale (reviewer-facing, may be in PT)
 └── README.md
 ```
+
+Note: the `db/` package centralizes models and repositories (the shared data core, per
+ADR-005); domain modules stay thin, so per-domain packages were not created. Search strategies
+live under `search/strategies/` (Vision A, ADR-004).
 
 ---
 
